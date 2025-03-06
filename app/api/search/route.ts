@@ -1,5 +1,42 @@
 // File: /app/api/search/route.ts
-export async function GET(request: Request) {
+
+interface AniListPageInfo {
+    total: number;
+    currentPage: number;
+    lastPage: number;
+    hasNextPage: boolean;
+  }
+  
+  interface AniListMedia {
+    id: number;
+    title: {
+      romaji: string;
+      english: string | null;
+      native: string;
+    };
+    description?: string;
+    episodes?: number;
+    genres: string[];
+    coverImage: {
+      extraLarge?: string;
+      large?: string;
+      medium?: string;
+      color?: string | null;
+    };
+  }
+  
+  interface AniListPage {
+    pageInfo: AniListPageInfo;
+    media: AniListMedia[];
+  }
+  
+  interface AniListResponse {
+    data: {
+      Page: AniListPage;
+    };
+  }
+  
+  export async function GET(request: Request): Promise<Response> {
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q");
   
@@ -10,7 +47,7 @@ export async function GET(request: Request) {
       );
     }
   
-    // GraphQL query with pagination and an isAdult filter to exclude 18+ content
+    // GraphQL query with pagination and cover image, excluding 18+ content
     const query = `
       query ($search: String, $page: Int, $perPage: Int) {
         Page(page: $page, perPage: $perPage) {
@@ -36,16 +73,15 @@ export async function GET(request: Request) {
               medium
               color
             }
-            isAdult
           }
         }
       }
     `;
   
-    let allMedia: any[] = [];
+    const perPage = 50;
     let page = 1;
-    const perPage = 50; // Adjust this value if necessary
     let hasNextPage = true;
+    let allMedia: AniListMedia[] = [];
   
     try {
       while (hasNextPage) {
@@ -60,7 +96,8 @@ export async function GET(request: Request) {
           body: JSON.stringify({ query, variables })
         });
   
-        const json = await response.json();
+        const json: AniListResponse = await response.json();
+  
         if (!response.ok) {
           return new Response(JSON.stringify(json), {
             status: response.status,
@@ -69,10 +106,7 @@ export async function GET(request: Request) {
         }
   
         const pageData = json.data.Page;
-        // As an extra safeguard, filter out any media items marked as adult
-        const filteredMedia = pageData.media.filter((item: any) => !item.isAdult);
-        allMedia = allMedia.concat(filteredMedia);
-  
+        allMedia = allMedia.concat(pageData.media);
         hasNextPage = pageData.pageInfo.hasNextPage;
         page++;
       }
